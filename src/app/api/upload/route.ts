@@ -11,20 +11,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // 1. Convert/Resize Image (Client side logic handles desired resize dims? Or here? 
-    // The requirement says "resize the image... when I drop the image into the tool input"
-    // I'll assume we want a standard webp conversion.
-    // For now, let's just convert to WebP and ensure max width? 
-    // "similar to squoosh" implies user control, but user said "tool to help me resize... then upload".
-    // I will implement a default resize to 1920px width if larger, and convert to WebP.
-    // I can add params later if needed.
-    
+    // 1. Convert/Resize
+    const format = (formData.get('format') as string) || 'webp'
+    const customName = formData.get('name') as string | null
     const buffer = Buffer.from(await file.arrayBuffer())
     
-    const processedImageBuffer = await sharp(buffer)
+    let pipeline = sharp(buffer)
       .resize({ width: 1920, withoutEnlargement: true })
-      .webp({ quality: 80 })
-      .toBuffer()
+
+    if (format === 'png') {
+        pipeline = pipeline.png({ quality: 80 })
+    } else if (format === 'jpeg' || format === 'jpg') {
+        pipeline = pipeline.jpeg({ quality: 80 })
+    } else {
+        pipeline = pipeline.webp({ quality: 80 })
+    }
+    
+    const processedImageBuffer = await pipeline.toBuffer()
 
     // 2. Upload to pic.in.th
     const apiKey = process.env.PIC_IN_TH_API_KEY
@@ -32,13 +35,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Server configuration error: Missing API Key' }, { status: 500 })
     }
 
-    // Prepare FormData for external API
-    // We need to send the buffer. native fetch with FormData and Blob/Buffer can be tricky in Node environment
-    // Next.js App Router runs on Node (usually).
     const uploadFormData = new FormData()
-    // We need to append a Blob.
-    const blob = new Blob([new Uint8Array(processedImageBuffer)], { type: 'image/webp' })
-    uploadFormData.append('source', blob, 'image.webp')
+    const mimeType = format === 'png' ? 'image/png' : (format === 'jpeg' || format === 'jpg') ? 'image/jpeg' : 'image/webp'
+    const extension = format === 'jpeg' ? 'jpg' : format
+    
+    // Determine title: Use customName if provided, otherwise fallback to filename (without extension if possible, or just file.name)
+    let title = customName
+    if (!title) {
+        // Remove extension from original name for cleaner title, or just use full name
+        title = file.name.replace(/\.[^/.]+$/, "")
+    }
+
+    const filename = `${title}.${extension}`
+
+    const blob = new Blob([new Uint8Array(processedImageBuffer)], { type: mimeType })
+    uploadFormData.append('source', blob, filename)
+    uploadFormData.append('title', title)
     // uploadFormData.append('format', 'json') // Default is json likely
 
     const response = await fetch('https://pic.in.th/api/1/upload', {

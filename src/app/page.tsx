@@ -24,6 +24,10 @@ export default function Home() {
   const [history, setHistory] = useState<UploadedImage[]>([])
   const [lastUploaded, setLastUploaded] = useState<UploadedImage | null>(null)
   const [error, setError] = useState<string | null>(null)
+  
+  // New States
+  const [format, setFormat] = useState('webp')
+  const [customName, setCustomName] = useState('')
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -79,6 +83,10 @@ export default function Home() {
 
     const formData = new FormData()
     formData.append('file', file)
+    formData.append('format', format)
+    if (customName) {
+        formData.append('name', customName)
+    }
 
     try {
       const res = await fetch('/api/upload', {
@@ -113,6 +121,37 @@ export default function Home() {
                     Resize to WebP & Upload to pic.in.th automatically
                 </p>
             </header>
+
+            {/* Controls */}
+            <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1 space-y-1">
+                    <label className="text-sm font-medium text-neutral-400" htmlFor="custom-name">Custom Filename (Optional)</label>
+                    <input
+                        id="custom-name"
+                        type="text"
+                        placeholder="e.g. holiday-photo"
+                        value={customName}
+                        onChange={(e) => setCustomName(e.target.value)}
+                        className="w-full bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition placeholder:text-neutral-600"
+                    />
+                </div>
+                <div className="w-full sm:w-48 space-y-1">
+                    <label className="text-sm font-medium text-neutral-400" htmlFor="format-select">Format</label>
+                    <div className="relative">
+                        <select
+                            id="format-select"
+                            value={format}
+                            onChange={(e) => setFormat(e.target.value)}
+                            className="w-full appearance-none bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-2.5 focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition cursor-pointer"
+                        >
+                            <option value="webp">WebP (Default)</option>
+                            <option value="png">PNG</option>
+                            <option value="jpeg">JPEG</option>
+                        </select>
+                        {/* Custom arrow could go here */}
+                    </div>
+                </div>
+            </div>
 
             {/* Upload Zone */}
             <div 
