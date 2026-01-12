@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     // 3. Save to Database
     const savedImage = await prisma.image.create({
       data: {
-        originalName: file.name,
+        originalName: title, // Use the computed title (custom name or original name)
         url: imageUrl,
       },
     })
@@ -106,5 +106,24 @@ export async function GET() {
     return NextResponse.json(images)
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch history' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { id } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'ID is required' }, { status: 400 })
+    }
+
+    await prisma.image.delete({
+      where: { id: Number(id) },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to delete image' }, { status: 500 })
   }
 }

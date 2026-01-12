@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, Image as ImageIcon, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Upload, Image as ImageIcon, CheckCircle, AlertCircle, Loader2, Trash2 } from 'lucide-react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -28,6 +28,7 @@ export default function Home() {
   // New States
   const [format, setFormat] = useState('webp')
   const [customName, setCustomName] = useState('')
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -45,6 +46,26 @@ export default function Home() {
     fetchHistory()
   }, [fetchHistory])
 
+  const handleDelete = async (id: number) => {
+    if (!confirm('Are you sure you want to remove this item from history?')) return
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      })
+      
+      if (res.ok) {
+        setHistory(prev => prev.filter(item => item.id !== id))
+      } else {
+        console.error('Failed to delete')
+      }
+    } catch (e) {
+      console.error('Error deleting', e)
+    }
+  }
+
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
@@ -60,29 +81,37 @@ export default function Home() {
     e.stopPropagation()
     setDragActive(false)
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0])
+      prepareUpload(e.dataTransfer.files[0])
     }
   }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault()
     if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0])
+      prepareUpload(e.target.files[0])
     }
+    // Reset inputs value to allow selecting same file again if canceled
+    e.target.value = ''
   }
 
-  const handleFile = async (file: File) => {
+  const prepareUpload = (file: File) => {
     if (!file.type.startsWith('image/')) {
         setError("Please upload an image file.")
         return
     }
+    setPendingFile(file)
+    setError(null)
+  }
+
+  const confirmUpload = async () => {
+    if (!pendingFile) return
     
     setUploading(true)
     setError(null)
     setLastUploaded(null)
 
     const formData = new FormData()
-    formData.append('file', file)
+    formData.append('file', pendingFile)
     formData.append('format', format)
     if (customName) {
         formData.append('name', customName)
@@ -98,11 +127,15 @@ export default function Home() {
       if (res.ok) {
         setLastUploaded(data.image)
         fetchHistory()
+        setPendingFile(null)
+        setCustomName('') 
       } else {
         setError(data.error || 'Upload failed')
+        setPendingFile(null) // Close modal on error to allow retry
       }
     } catch (e) {
       setError('An unexpected error occurred')
+      setPendingFile(null)
     } finally {
       setUploading(false)
     }
@@ -153,49 +186,95 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* Upload Zone */}
-            <div 
-                className={cn(
-                    "relative group cursor-pointer transition-all duration-300 ease-out",
-                    "border-2 border-dashed rounded-3xl p-12 text-center",
-                    dragActive 
-                        ? "border-purple-500 bg-purple-500/10 scale-[1.02]" 
-                        : "border-neutral-800 hover:border-neutral-600 bg-neutral-900/50"
-                )}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('file-upload')?.click()}
-            >
-                <input 
-                    type="file" 
-                    id="file-upload" 
-                    className="hidden" 
-                    accept="image/*"
-                    onChange={handleChange}
-                />
-                
-                <div className="flex flex-col items-center justify-center space-y-4">
-                    <div className={cn(
-                        "p-4 rounded-full transition-colors",
-                        dragActive ? "bg-purple-500/20 text-purple-400" : "bg-neutral-800 text-neutral-400 group-hover:bg-neutral-700"
-                    )}>
-                        {uploading ? (
-                            <Loader2 className="w-10 h-10 animate-spin" />
-                        ) : (
-                            <Upload className="w-10 h-10" />
-                        )}
-                    </div>
-                    <div className="space-y-1">
-                        <p className="text-lg font-medium">
-                            {uploading ? "Processing..." : "Drop your image here"}
-                        </p>
-                        <p className="text-sm text-neutral-500">
-                            or click to browse
-                        </p>
-                    </div>
-                </div>
+            {/* Confirm Dialog / Upload Zone */}
+            <div className="relative min-h-[300px]">
+                <AnimatePresence mode="wait">
+                    {pendingFile ? (
+                        <motion.div 
+                            key="confirm-dialog"
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="absolute inset-0 bg-neutral-900 border border-neutral-800 rounded-3xl p-8 flex flex-col items-center justify-center text-center space-y-6 z-10"
+                        >
+                            <div className="space-y-2">
+                                <h3 className="text-xl font-semibold text-white">Confirm Upload</h3>
+                                <p className="text-neutral-400">
+                                    Ready to process and upload <span className="text-purple-400 font-medium">{pendingFile.name}</span>
+                                </p>
+                                <div className="text-sm text-neutral-500 bg-neutral-950/50 py-2 px-4 rounded-lg inline-block">
+                                    Size: {(pendingFile.size / 1024).toFixed(1)} KB • Output: {format.toUpperCase()}
+                                </div>
+                            </div>
+                            
+                            <div className="flex gap-4">
+                                <button 
+                                    onClick={() => setPendingFile(null)}
+                                    disabled={uploading}
+                                    className="px-6 py-2 rounded-xl bg-neutral-800 text-neutral-300 hover:bg-neutral-700 hover:text-white transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={confirmUpload}
+                                    disabled={uploading}
+                                    className="px-6 py-2 rounded-xl bg-purple-600 text-white hover:bg-purple-500 transition font-medium shadow-lg shadow-purple-900/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {uploading && <Loader2 className="w-4 h-4 animate-spin" />}
+                                    {uploading ? 'Uploading...' : 'Upload Now'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    ) : (
+                        <motion.div
+                            key="upload-zone"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className={cn(
+                                "absolute inset-0 group cursor-pointer transition-all duration-300 ease-out",
+                                "border-2 border-dashed rounded-3xl flex flex-col items-center justify-center text-center",
+                                dragActive 
+                                    ? "border-purple-500 bg-purple-500/10 scale-[1.02]" 
+                                    : "border-neutral-800 hover:border-neutral-600 bg-neutral-900/50"
+                            )}
+                            onDragEnter={handleDrag}
+                            onDragLeave={handleDrag}
+                            onDragOver={handleDrag}
+                            onDrop={handleDrop}
+                            onClick={() => document.getElementById('file-upload')?.click()}
+                        >
+                            <input 
+                                type="file" 
+                                id="file-upload" 
+                                className="hidden" 
+                                accept="image/*"
+                                onChange={handleChange}
+                            />
+                            
+                            <div className="flex flex-col items-center justify-center space-y-4 p-12">
+                                <div className={cn(
+                                    "p-4 rounded-full transition-colors",
+                                    dragActive ? "bg-purple-500/20 text-purple-400" : "bg-neutral-800 text-neutral-400 group-hover:bg-neutral-700"
+                                )}>
+                                    {uploading ? (
+                                        <Loader2 className="w-10 h-10 animate-spin" />
+                                    ) : (
+                                        <Upload className="w-10 h-10" />
+                                    )}
+                                </div>
+                                <div className="space-y-1">
+                                    <p className="text-lg font-medium">
+                                        {uploading ? "Processing..." : "Drop your image here"}
+                                    </p>
+                                    <p className="text-sm text-neutral-500">
+                                        or click to browse
+                                    </p>
+                                </div>
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
 
             {/* Error Message */}
@@ -257,7 +336,7 @@ export default function Home() {
                                 layout
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="bg-neutral-900 p-4 rounded-xl flex items-center justify-between border border-neutral-800 hover:border-neutral-700 transition"
+                                className="bg-neutral-900 p-4 rounded-xl flex items-center justify-between border border-neutral-800 hover:border-neutral-700 transition group"
                             >
                                 <div className="flex-1 min-w-0 mr-4">
                                     <p className="font-medium text-neutral-300 truncate">{img.originalName}</p>
@@ -265,14 +344,23 @@ export default function Home() {
                                         {new Date(img.createdAt).toLocaleDateString()} • {new Date(img.createdAt).toLocaleTimeString()}
                                     </p>
                                 </div>
-                                <a 
-                                    href={img.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-4 py-2 rounded-lg bg-neutral-800 text-sm font-medium text-neutral-300 hover:bg-neutral-700 hover:text-white transition"
-                                >
-                                    Open
-                                </a>
+                                <div className="flex items-center gap-2">
+                                    <a 
+                                        href={img.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-4 py-2 rounded-lg bg-neutral-800 text-sm font-medium text-neutral-300 hover:bg-neutral-700 hover:text-white transition"
+                                    >
+                                        Open
+                                    </a>
+                                    <button
+                                        onClick={() => handleDelete(img.id)}
+                                        className="p-2 rounded-lg text-neutral-600 hover:bg-red-500/10 hover:text-red-500 transition opacity-0 group-hover:opacity-100"
+                                        title="Remove from history"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
                             </motion.div>
                         ))
                     )}
