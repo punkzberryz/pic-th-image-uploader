@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Upload, Image as ImageIcon, CheckCircle, AlertCircle, Loader2, Trash2 } from 'lucide-react'
+import { Upload, Image as ImageIcon, CheckCircle, AlertCircle, Loader2, Trash2, Copy, Check } from 'lucide-react'
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
@@ -29,6 +29,17 @@ export default function Home() {
   const [format, setFormat] = useState('webp')
   const [customName, setCustomName] = useState('')
   const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [copiedId, setCopiedId] = useState<number | string | null>(null)
+
+  const copyToClipboard = async (text: string, id: number | string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedId(id)
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy text: ', err)
+    }
+  }
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -306,14 +317,23 @@ export default function Home() {
                         </div>
                         <div>
                             <h3 className="text-lg font-semibold text-green-400">Upload Successful!</h3>
-                            <a 
-                                href={lastUploaded.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-neutral-300 hover:text-white underline underline-offset-4 mt-1 block break-all"
-                            >
-                                {lastUploaded.url}
-                            </a>
+                            <div className="mt-2 flex items-center justify-center gap-2">
+                                <a 
+                                    href={lastUploaded.url} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-neutral-300 hover:text-white underline underline-offset-4 break-all text-sm"
+                                >
+                                    {lastUploaded.url}
+                                </a>
+                                <button
+                                    onClick={() => copyToClipboard(lastUploaded.url, 'last')}
+                                    className="p-2 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition shrink-0"
+                                    title="Copy link"
+                                >
+                                    {copiedId === 'last' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                                </button>
+                            </div>
                         </div>
                     </motion.div>
                 )}
@@ -344,7 +364,14 @@ export default function Home() {
                                         {new Date(img.createdAt).toLocaleDateString()} • {new Date(img.createdAt).toLocaleTimeString()}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                 <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => copyToClipboard(img.url, img.id)}
+                                        className="p-2 rounded-lg bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white transition"
+                                        title="Copy link"
+                                    >
+                                        {copiedId === img.id ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                                    </button>
                                     <a 
                                         href={img.url}
                                         target="_blank"
